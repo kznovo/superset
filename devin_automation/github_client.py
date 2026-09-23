@@ -152,17 +152,17 @@ class GitHubClient:
         checks = await self._optional_get(
             f"/repos/{self.repo}/commits/{sha}/check-runs"
         )
-        if legacy is None and checks is None:
+        if legacy is None or checks is None:
             logger.warning(
-                "no CI visibility for %s: grant the token Commit statuses and "
-                "Checks read access, or disable require_green_ci",
+                "incomplete CI visibility for %s: grant the token Commit statuses "
+                "and Checks read access, or disable require_green_ci",
                 sha,
             )
             return "pending"
         states: set[str] = set()
-        if legacy is not None and legacy.get("statuses"):
+        if legacy.get("statuses"):
             states.add(str(legacy.get("state", "pending")))
-        for run in (checks or {}).get("check_runs", []):
+        for run in checks.get("check_runs", []):
             if run.get("status") != "completed":
                 states.add("pending")
             elif run.get("conclusion") in ("success", "neutral", "skipped"):

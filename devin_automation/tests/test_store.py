@@ -97,3 +97,19 @@ async def test_combined_status_without_ci_visibility_blocks_merge() -> None:
     )
     assert await client.combined_status("sha") == "pending"
     assert await client.whoami() == ""
+
+
+async def test_combined_status_with_partial_ci_visibility_blocks_merge() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path.endswith("/check-runs"):
+            return httpx.Response(403, json={"message": "Resource not accessible"})
+        return httpx.Response(200, json={"state": "success", "statuses": [{"id": 1}]})
+
+    client = GitHubClient(
+        token="t",  # noqa: S106
+        repo="o/r",
+        client=httpx.AsyncClient(
+            base_url="https://api.github.com", transport=httpx.MockTransport(handler)
+        ),
+    )
+    assert await client.combined_status("sha") == "pending"
