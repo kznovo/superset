@@ -96,7 +96,6 @@ async def test_combined_status_without_ci_visibility_blocks_merge() -> None:
         ),
     )
     assert await client.combined_status("sha") == "pending"
-    assert await client.whoami() == ""
 
 
 async def test_combined_status_with_partial_ci_visibility_blocks_merge() -> None:

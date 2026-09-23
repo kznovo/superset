@@ -26,7 +26,7 @@ import pytest
 
 from devin_automation.config import Settings
 from devin_automation.models import IssueState
-from devin_automation.orchestrator import Orchestrator
+from devin_automation.orchestrator import COMMENT_MARKER, Orchestrator
 from devin_automation.store import Store
 from devin_automation.tests.fakes import BOT_LOGIN, FakeDevin, FakeGitHub
 
@@ -61,9 +61,23 @@ async def test_new_issue_starts_a_session(setup: Any) -> None:
     assert "Handle issue #1" in devin.created[0]["prompt"]
 
 
-async def test_own_comments_are_ignored(setup: Any) -> None:
+async def test_issues_from_the_token_owner_are_processed(setup: Any) -> None:
+    # The token often belongs to a human who also files issues.
     orchestrator, github, devin, store = setup
     github.add_issue(1, "Chart breaks", BOT_LOGIN)
+
+    await orchestrator.run_cycle()
+
+    issue = store.get_issue(1)
+    assert issue is not None
+    assert issue.state is IssueState.IMPLEMENTING
+    assert len(devin.created) == 1
+
+
+async def test_configured_ignored_authors_are_skipped(setup: Any) -> None:
+    orchestrator, github, devin, store = setup
+    orchestrator.settings.ignored_authors = ("noisy-bot",)
+    github.add_issue(1, "Chart breaks", "noisy-bot")
 
     await orchestrator.run_cycle()
 
@@ -271,27 +285,18 @@ async def test_concurrency_budget_defers_extra_issues(setup: Any) -> None:
     assert IssueState.NEW in states.values()
 
 
-async def test_bot_login_is_learned_when_identity_is_unreadable(setup: Any) -> None:
-    orchestrator, github, devin, store = setup
-    github.whoami_login = ""
-    github.add_issue(1, "Vague", "alice")
+async def test_own_clarification_does_not_read_as_a_reply(setup: Any) -> None:
+    # Posted under the same login as the reporter: only the marker separates them.
+    orchestrator, github, devin, _store = setup
+    github.add_issue(1, "Vague", BOT_LOGIN)
     await orchestrator.run_cycle()
     devin.set_session(
         devin.created[0]["session_id"],
         structured_output={"outcome": "needs_clarification", "question": "Which DB?"},
     )
+    await orchestrator.run_cycle()
+    assert COMMENT_MARKER in github.posted[-1][1]
 
     await orchestrator.run_cycle()
 
-    assert store.get_cursor("bot_login") == BOT_LOGIN
-    # The clarification the automation just posted must not read as a reply.
-    await orchestrator.run_cycle()
     assert devin.messages == []
-
-
-async def test_configured_bot_login_wins_over_identity_lookup(setup: Any) -> None:
-    orchestrator, github, _devin, _store = setup
-    orchestrator.settings.bot_login = "configured-bot"
-    github.whoami_login = "token-owner"
-
-    assert await orchestrator.bot_login() == "configured-bot"

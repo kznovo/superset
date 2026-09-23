@@ -84,22 +84,6 @@ class GitHubClient:
             page += 1
         return results
 
-    # --- identity --------------------------------------------------------
-
-    async def whoami(self) -> str:
-        """Login of the authenticated account, or "" when it cannot be read.
-
-        Fine-grained personal access tokens have no access to ``/user``.
-        """
-        try:
-            data = await self._request("GET", "/user")
-        except GitHubError as exc:
-            if exc.status_code in (401, 403, 404):
-                logger.warning("cannot resolve token identity: %s", exc)
-                return ""
-            raise
-        return str(data["login"])
-
     # --- issues ----------------------------------------------------------
 
     async def list_issues_updated_since(

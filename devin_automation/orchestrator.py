@@ -48,7 +48,9 @@ logger = logging.getLogger(__name__)
 JSONDict = dict[str, Any]
 
 ISSUE_CURSOR_KEY = "issues_updated_since"
-_BOT_LOGIN_KEY = "bot_login"
+#: Footer stamped on every comment the automation posts, so its own comments are
+#: recognisable even when the token belongs to a human who also comments.
+COMMENT_MARKER = "<!-- devin-automation -->"
 
 
 def _utcnow_iso() -> str:
@@ -67,38 +69,24 @@ class Orchestrator:
         self.store = store
         self.github = github
         self.devin = devin
-        self._bot_login: str | None = None
         self.last_report: PollReport | None = None
 
     # --- helpers ---------------------------------------------------------
 
-    async def bot_login(self) -> str:
-        """Login whose comments the automation must not react to.
-
-        Resolution order: explicit configuration, the login learned from a
-        comment the automation posted earlier, then the token identity.
-        """
-        if self._bot_login is None:
-            self._bot_login = (
-                self.settings.bot_login
-                or self.store.get_cursor(_BOT_LOGIN_KEY)
-                or await self.github.whoami()
-            )
-        return self._bot_login
-
-    def _is_ignored_author(self, login: str, bot_login: str) -> bool:
-        return login == bot_login or login in self.settings.ignored_authors
+    def _is_reply(self, comment: JSONDict) -> bool:
+        """Whether a comment is human input the automation should react to."""
+        if COMMENT_MARKER in str(comment.get("body") or ""):
+            return False
+        login = str((comment.get("user") or {}).get("login", ""))
+        return login not in self.settings.ignored_authors
 
     async def _comment(self, issue_number: int, body: str, report: PollReport) -> None:
+        body = f"{body}\n\n{COMMENT_MARKER}"
         if self.settings.dry_run:
             logger.info("[dry-run] would comment on #%s:\n%s", issue_number, body)
             return
-        posted = await self.github.create_issue_comment(issue_number, body)
+        await self.github.create_issue_comment(issue_number, body)
         report.comments_posted += 1
-        login = str((posted.get("user") or {}).get("login", ""))
-        if login and not self._bot_login:
-            self._bot_login = login
-            self.store.set_cursor(_BOT_LOGIN_KEY, login)
 
     def _save(self, issue: TrackedIssue) -> TrackedIssue:
         return self.store.upsert_issue(issue)
@@ -124,13 +112,12 @@ class Orchestrator:
         issues = await self.github.list_issues_updated_since(
             since, labels=self.settings.issue_label_filter
         )
-        bot_login = await self.bot_login()
         report.issues_scanned = len(issues)
 
         for payload in issues:
             number = int(payload["number"])
             author = str((payload.get("user") or {}).get("login", ""))
-            if self._is_ignored_author(author, bot_login):
+            if author in self.settings.ignored_authors:
                 continue
             tracked = self.store.get_issue(number)
             if tracked is None:
@@ -174,14 +161,7 @@ class Orchestrator:
 
         payload = await self.github.get_issue(issue.number)
         comments = await self.github.list_issue_comments(issue.number)
-        bot_login = await self.bot_login()
-        human_comments = [
-            comment
-            for comment in comments
-            if not self._is_ignored_author(
-                str((comment.get("user") or {}).get("login", "")), bot_login
-            )
-        ]
+        human_comments = [c for c in comments if self._is_reply(c)]
         comments_section = ""
         if human_comments:
             comments_section = (
@@ -265,14 +245,11 @@ class Orchestrator:
         self, issue: TrackedIssue, report: PollReport
     ) -> None:
         comments = await self.github.list_issue_comments(issue.number)
-        bot_login = await self.bot_login()
         new_comments = [
             comment
             for comment in comments
             if int(comment["id"]) > issue.last_seen_comment_id
-            and not self._is_ignored_author(
-                str((comment.get("user") or {}).get("login", "")), bot_login
-            )
+            and self._is_reply(comment)
         ]
         if not new_comments:
             return

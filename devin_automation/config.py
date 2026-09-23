@@ -65,9 +65,6 @@ class Settings(BaseSettings):
     max_concurrent_sessions: int = Field(default=3, ge=1)
     issue_label_filter: str = ""
     ignored_authors: tuple[str, ...] = ()
-    # Login of the account behind the token; needed only when the token cannot
-    # read `/user`, e.g. a fine-grained PAT, and no comment has been posted yet.
-    bot_login: str = ""
 
     # --- storage ---------------------------------------------------------
     state_db_path: str = "/data/devin_automation.sqlite"
