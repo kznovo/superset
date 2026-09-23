@@ -189,6 +189,56 @@ async def test_pr_opened_review_then_merge_keeps_issue_open(setup: Any) -> None:
     assert "Leaving this issue open" in github.posted[-1][1]
 
 
+async def test_blocked_session_with_output_is_read_as_a_result(setup: Any) -> None:
+    # Sessions idle into "blocked" once they finish, structured output and all.
+    orchestrator, github, devin, store = setup
+    github.add_issue(1, "Bug", "alice")
+    await orchestrator.run_cycle()
+    github.add_pull(42)
+    devin.set_session(
+        devin.created[0]["session_id"],
+        status_enum="blocked",
+        structured_output={
+            "outcome": "pr_opened",
+            "pr_url": "https://github.com/o/r/pull/42",
+        },
+    )
+
+    await orchestrator.run_cycle()
+
+    issue = store.get_issue(1)
+    assert issue is not None
+    assert issue.state is IssueState.REVIEWING
+    assert issue.pr_number == 42
+
+
+async def test_blocked_review_session_is_not_waited_on_forever(setup: Any) -> None:
+    orchestrator, github, devin, store = setup
+    github.add_issue(1, "Bug", "alice")
+    await orchestrator.run_cycle()
+    github.add_pull(42)
+    devin.set_session(
+        devin.created[0]["session_id"],
+        structured_output={
+            "outcome": "pr_opened",
+            "pr_url": "https://github.com/o/r/pull/42",
+        },
+    )
+    await orchestrator.run_cycle()
+    await orchestrator.run_cycle()
+    review_session = store.get_review_session(42)
+    assert review_session is not None
+    devin.set_session(
+        review_session,
+        status_enum="blocked",
+        structured_output={"verdict": "ready_to_merge"},
+    )
+
+    await orchestrator.run_cycle()
+
+    assert github.merged == [42]
+
+
 async def test_failing_ci_sends_the_session_back_to_work(setup: Any) -> None:
     orchestrator, github, devin, store = setup
     github.add_issue(1, "Bug", "alice")

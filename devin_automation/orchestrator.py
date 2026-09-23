@@ -209,16 +209,17 @@ class Orchestrator:
             return
 
         snapshot = await self.devin.get_session(issue.session_id)
-        if snapshot.is_blocked:
-            await self._ask_reporter(
-                issue, self._last_devin_message(snapshot), snapshot.url, report
-            )
-            return
-        if not snapshot.is_terminal:
-            return
-
         output = snapshot.structured_output or {}
         outcome = str(output.get("outcome", ""))
+
+        if not outcome:
+            if snapshot.is_blocked:
+                await self._ask_reporter(
+                    issue, self._last_devin_message(snapshot), snapshot.url, report
+                )
+                return
+            if not snapshot.is_terminal:
+                return
 
         if outcome == "needs_clarification":
             await self._ask_reporter(
@@ -287,11 +288,10 @@ class Orchestrator:
             return
 
         snapshot = await self.devin.get_session(review_session_id)
-        if not snapshot.is_terminal:
-            return
-
         output = snapshot.structured_output or {}
         verdict = str(output.get("verdict", ""))
+        if not verdict and not (snapshot.is_terminal or snapshot.is_blocked):
+            return
         self.store.clear_review_session(issue.pr_number)
 
         if verdict == "ready_to_merge":
