@@ -158,6 +158,8 @@ def status() -> dict[str, Any]:
         "repo": runtime.settings.repo,
         "paused": runtime.paused,
         "poll_interval_seconds": runtime.settings.poll_interval_seconds,
+        "dry_run": runtime.settings.dry_run,
+        "auto_merge": runtime.settings.auto_merge,
         "last_cycle": last.as_dict() if last else None,
         "tracked_issues": [issue.as_dict() for issue in runtime.store.list_issues()],
     }

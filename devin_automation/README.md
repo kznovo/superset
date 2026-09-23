@@ -82,7 +82,7 @@ every read and logs every decision but creates no sessions, comments or merges.
 | Method | Path             | Purpose                                       |
 | ------ | ---------------- | --------------------------------------------- |
 | GET    | `/health`        | Liveness plus whether credentials are present  |
-| GET    | `/status`        | Last cycle report and every tracked issue      |
+| GET    | `/status`        | Write-mode flags, last cycle report and issues |
 | GET    | `/issues/{n}`    | State of a single tracked issue                |
 | POST   | `/poll`          | Run a cycle immediately                        |
 | POST   | `/pause`         | Stop acting (reads and state are preserved)    |
