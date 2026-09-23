@@ -152,7 +152,14 @@ class FakeDevin:
         idempotent: bool = True,
     ) -> JSONDict:
         session_id = f"devin-{next(self._ids)}"
-        self.created.append({"session_id": session_id, "prompt": prompt, "tags": tags})
+        self.created.append(
+            {
+                "session_id": session_id,
+                "prompt": prompt,
+                "tags": tags,
+                "idempotent": idempotent,
+            }
+        )
         self.set_session(session_id, status_enum="working")
         return {"session_id": session_id, "url": f"https://app.devin.ai/{session_id}"}
 

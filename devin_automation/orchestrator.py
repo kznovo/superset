@@ -209,12 +209,7 @@ class Orchestrator:
             return
 
         snapshot = await self.devin.get_session(issue.session_id)
-        if snapshot.is_blocked:
-            await self._ask_reporter(
-                issue, self._last_devin_message(snapshot), snapshot.url, report
-            )
-            return
-        if not snapshot.is_terminal:
+        if not snapshot.is_settled:
             return
 
         output = snapshot.structured_output or {}
@@ -230,16 +225,20 @@ class Orchestrator:
             await self._abandon(
                 issue, str(output.get("summary", "the issue is not actionable")), report
             )
+        elif snapshot.pull_request_url:
+            await self._register_pull_request(
+                issue, {"pr_url": snapshot.pull_request_url}, snapshot, report
+            )
+        elif snapshot.is_blocked:
+            # Stuck without an answer of its own: whatever it last said is a
+            # question for the reporter.
+            await self._ask_reporter(
+                issue, self._last_devin_message(snapshot), snapshot.url, report
+            )
         else:
-            pr_url = snapshot.pull_request_url
-            if pr_url:
-                await self._register_pull_request(
-                    issue, {"pr_url": pr_url}, snapshot, report
-                )
-            else:
-                await self._abandon(
-                    issue, "the session finished without a pull request", report
-                )
+            await self._abandon(
+                issue, "the session finished without a pull request", report
+            )
 
     async def _handle_awaiting_reporter(
         self, issue: TrackedIssue, report: PollReport
@@ -287,7 +286,7 @@ class Orchestrator:
             return
 
         snapshot = await self.devin.get_session(review_session_id)
-        if not snapshot.is_terminal:
+        if not snapshot.is_settled:
             return
 
         output = snapshot.structured_output or {}
@@ -340,6 +339,10 @@ class Orchestrator:
             title=f"[auto-review] {self.settings.repo}#{issue.pr_number}"[:120],
             tags=["devin-automation", "review", f"issue-{issue.number}"],
             structured_output_schema=REVIEW_OUTPUT_SCHEMA,
+            # Every round reviews the same pull request URL, so an idempotent
+            # create would hand back the previous round's session — verdict
+            # included — and the loop would spend its rounds re-reading it.
+            idempotent=False,
         )
         assert issue.pr_number is not None
         self.store.set_review_session(issue.pr_number, str(session["session_id"]))

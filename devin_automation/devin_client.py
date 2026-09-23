@@ -58,6 +58,17 @@ class SessionSnapshot:
     def is_blocked(self) -> bool:
         return (self.status_enum or "") == BLOCKED_STATUS
 
+    @property
+    def is_settled(self) -> bool:
+        """Whether the session stopped working, with or without a verdict.
+
+        A session that completes its task idles into ``blocked`` rather than
+        ``finished``, and its structured output stays readable afterwards, so
+        both statuses carry results. Anything else means work is in flight and
+        the structured output still describes the previous round.
+        """
+        return self.is_terminal or self.is_blocked
+
 
 class DevinClient:
     def __init__(
