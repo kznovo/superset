@@ -24,7 +24,9 @@ permissions:
 
 jobs:
   dependency-review:
-    if: github.event_name == 'pull_request'
+    # The dependency graph is off by default on forks, and the action fails
+    # hard without it rather than reporting "nothing to review".
+    if: github.event_name == 'pull_request' && !github.event.repository.fork
     runs-on: ubuntu-slim
     steps:
       - name: "Checkout Repository"
