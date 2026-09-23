@@ -305,6 +305,28 @@ services:
     healthcheck:
       test: ["CMD-SHELL", "celery inspect ping -A superset.tasks.celery_app:app -d celery@$$HOSTNAME"]
 
+  devin-automation:
+    # Watches GitHub issues and drives Devin sessions to fix them. It boots
+    # even without credentials and simply stays idle, so it never blocks
+    # `docker compose up`. See devin_automation/README.md.
+    build:
+      context: .
+      dockerfile: devin_automation/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - path: docker/.env # default
+        required: true
+      - path: docker/.env-local # optional override
+        required: false
+      - path: devin_automation/.env # credentials, git-ignored
+        required: false
+    environment:
+      DEVIN_AUTOMATION_STATE_DB_PATH: /data/devin_automation.sqlite
+    ports:
+      - "127.0.0.1:${DEVIN_AUTOMATION_PORT:-8200}:8200"
+    volumes:
+      - devin_automation_data:/data
+
 volumes:
   superset_home:
     external: false
@@ -313,4 +335,6 @@ volumes:
   redis:
     external: false
   superset_data:
+    external: false
+  devin_automation_data:
     external: false
