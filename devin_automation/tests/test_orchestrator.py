@@ -212,6 +212,30 @@ async def test_blocked_session_with_output_is_read_as_a_result(setup: Any) -> No
     assert issue.pr_number == 42
 
 
+async def test_stale_output_is_ignored_while_the_session_works(setup: Any) -> None:
+    # Structured output survives a follow-up message, so a working session
+    # still advertises the previous round's result.
+    orchestrator, github, devin, store = setup
+    github.add_issue(1, "Bug", "alice")
+    await orchestrator.run_cycle()
+    session_id = devin.created[0]["session_id"]
+    devin.set_session(
+        session_id,
+        status_enum="working",
+        structured_output={
+            "outcome": "pr_opened",
+            "pr_url": "https://github.com/o/r/pull/42",
+        },
+    )
+
+    await orchestrator.run_cycle()
+
+    issue = store.get_issue(1)
+    assert issue is not None
+    assert issue.state is IssueState.IMPLEMENTING
+    assert issue.pr_number is None
+
+
 async def test_blocked_review_session_is_not_waited_on_forever(setup: Any) -> None:
     orchestrator, github, devin, store = setup
     github.add_issue(1, "Bug", "alice")

@@ -209,17 +209,11 @@ class Orchestrator:
             return
 
         snapshot = await self.devin.get_session(issue.session_id)
+        if not snapshot.is_settled:
+            return
+
         output = snapshot.structured_output or {}
         outcome = str(output.get("outcome", ""))
-
-        if not outcome:
-            if snapshot.is_blocked:
-                await self._ask_reporter(
-                    issue, self._last_devin_message(snapshot), snapshot.url, report
-                )
-                return
-            if not snapshot.is_terminal:
-                return
 
         if outcome == "needs_clarification":
             await self._ask_reporter(
@@ -231,16 +225,20 @@ class Orchestrator:
             await self._abandon(
                 issue, str(output.get("summary", "the issue is not actionable")), report
             )
+        elif snapshot.pull_request_url:
+            await self._register_pull_request(
+                issue, {"pr_url": snapshot.pull_request_url}, snapshot, report
+            )
+        elif snapshot.is_blocked:
+            # Stuck without an answer of its own: whatever it last said is a
+            # question for the reporter.
+            await self._ask_reporter(
+                issue, self._last_devin_message(snapshot), snapshot.url, report
+            )
         else:
-            pr_url = snapshot.pull_request_url
-            if pr_url:
-                await self._register_pull_request(
-                    issue, {"pr_url": pr_url}, snapshot, report
-                )
-            else:
-                await self._abandon(
-                    issue, "the session finished without a pull request", report
-                )
+            await self._abandon(
+                issue, "the session finished without a pull request", report
+            )
 
     async def _handle_awaiting_reporter(
         self, issue: TrackedIssue, report: PollReport
@@ -288,10 +286,11 @@ class Orchestrator:
             return
 
         snapshot = await self.devin.get_session(review_session_id)
+        if not snapshot.is_settled:
+            return
+
         output = snapshot.structured_output or {}
         verdict = str(output.get("verdict", ""))
-        if not verdict and not (snapshot.is_terminal or snapshot.is_blocked):
-            return
         self.store.clear_review_session(issue.pr_number)
 
         if verdict == "ready_to_merge":
