@@ -269,3 +269,29 @@ async def test_concurrency_budget_defers_extra_issues(setup: Any) -> None:
     assert len(devin.created) == 1
     states = {issue.number: issue.state for issue in store.list_issues()}
     assert IssueState.NEW in states.values()
+
+
+async def test_bot_login_is_learned_when_identity_is_unreadable(setup: Any) -> None:
+    orchestrator, github, devin, store = setup
+    github.whoami_login = ""
+    github.add_issue(1, "Vague", "alice")
+    await orchestrator.run_cycle()
+    devin.set_session(
+        devin.created[0]["session_id"],
+        structured_output={"outcome": "needs_clarification", "question": "Which DB?"},
+    )
+
+    await orchestrator.run_cycle()
+
+    assert store.get_cursor("bot_login") == BOT_LOGIN
+    # The clarification the automation just posted must not read as a reply.
+    await orchestrator.run_cycle()
+    assert devin.messages == []
+
+
+async def test_configured_bot_login_wins_over_identity_lookup(setup: Any) -> None:
+    orchestrator, github, _devin, _store = setup
+    orchestrator.settings.bot_login = "configured-bot"
+    github.whoami_login = "token-owner"
+
+    assert await orchestrator.bot_login() == "configured-bot"

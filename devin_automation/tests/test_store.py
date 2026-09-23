@@ -18,10 +18,11 @@
 #
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from devin_automation.config import Settings
-from devin_automation.github_client import pull_number_from_url
+from devin_automation.github_client import GitHubClient, pull_number_from_url
 from devin_automation.models import IssueState, TrackedIssue
 from devin_automation.store import Store
 
@@ -81,3 +82,18 @@ def test_missing_settings_are_reported() -> None:
         "DEVIN_AUTOMATION_GITHUB_TOKEN",
         "DEVIN_AUTOMATION_DEVIN_API_KEY",
     ]
+
+
+async def test_combined_status_without_ci_visibility_blocks_merge() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(403, json={"message": "Resource not accessible"})
+
+    client = GitHubClient(
+        token="t",  # noqa: S106
+        repo="o/r",
+        client=httpx.AsyncClient(
+            base_url="https://api.github.com", transport=httpx.MockTransport(handler)
+        ),
+    )
+    assert await client.combined_status("sha") == "pending"
+    assert await client.whoami() == ""

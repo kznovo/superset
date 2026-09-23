@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 JSONDict = dict[str, Any]
 
 ISSUE_CURSOR_KEY = "issues_updated_since"
+_BOT_LOGIN_KEY = "bot_login"
 
 
 def _utcnow_iso() -> str:
@@ -72,8 +73,17 @@ class Orchestrator:
     # --- helpers ---------------------------------------------------------
 
     async def bot_login(self) -> str:
+        """Login whose comments the automation must not react to.
+
+        Resolution order: explicit configuration, the login learned from a
+        comment the automation posted earlier, then the token identity.
+        """
         if self._bot_login is None:
-            self._bot_login = await self.github.whoami()
+            self._bot_login = (
+                self.settings.bot_login
+                or self.store.get_cursor(_BOT_LOGIN_KEY)
+                or await self.github.whoami()
+            )
         return self._bot_login
 
     def _is_ignored_author(self, login: str, bot_login: str) -> bool:
@@ -83,8 +93,12 @@ class Orchestrator:
         if self.settings.dry_run:
             logger.info("[dry-run] would comment on #%s:\n%s", issue_number, body)
             return
-        await self.github.create_issue_comment(issue_number, body)
+        posted = await self.github.create_issue_comment(issue_number, body)
         report.comments_posted += 1
+        login = str((posted.get("user") or {}).get("login", ""))
+        if login and not self._bot_login:
+            self._bot_login = login
+            self.store.set_cursor(_BOT_LOGIN_KEY, login)
 
     def _save(self, issue: TrackedIssue) -> TrackedIssue:
         return self.store.upsert_issue(issue)

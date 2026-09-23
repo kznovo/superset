@@ -38,6 +38,7 @@ class FakeGitHub:
         self.statuses: dict[str, str] = {}
         self.merged: list[int] = []
         self.posted: list[tuple[int, str]] = []
+        self.whoami_login = BOT_LOGIN
         self._comment_ids = count(1000)
 
     # --- test helpers ----------------------------------------------------
@@ -83,7 +84,7 @@ class FakeGitHub:
     # --- client surface --------------------------------------------------
 
     async def whoami(self) -> str:
-        return BOT_LOGIN
+        return self.whoami_login
 
     async def list_issues_updated_since(
         self, since: str | None, labels: str = ""
@@ -102,7 +103,7 @@ class FakeGitHub:
         self.comments.setdefault(number, []).append(
             {"id": comment_id, "user": {"login": BOT_LOGIN}, "body": body}
         )
-        return {"id": comment_id}
+        return {"id": comment_id, "user": {"login": BOT_LOGIN}}
 
     async def get_pull(self, number: int) -> JSONDict:
         return self.pulls[number]
