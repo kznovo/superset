@@ -70,9 +70,11 @@ Copy `.env.example` to `.env` (git-ignored) and fill it in. Every setting is an
 environment variable prefixed with `DEVIN_AUTOMATION_`; see `config.py`.
 
 The GitHub token needs `repo` scope (issues: read/write, pull requests:
-read/write, contents: read/write for merging). Use a dedicated bot account or a
-GitHub App installation token — the service ignores comments authored by its
-own token identity, which is what keeps it from replying to itself.
+read/write, contents: read/write for merging; a fine-grained token additionally
+needs commit statuses: read-only, otherwise `require_green_ci` never sees a
+green status). The token may belong to a human: every comment the service posts
+carries an HTML marker, and that marker — not the author — is what keeps it from
+replying to itself. `ignored_authors` skips other accounts entirely.
 
 **Start with `DEVIN_AUTOMATION_DRY_RUN=true`.** In dry-run mode the poller does
 every read and logs every decision but creates no sessions, comments or merges.
@@ -111,8 +113,8 @@ DEVIN_AUTOMATION_STATE_DB_PATH=/tmp/devin_automation.sqlite \
   have a live session at once.
 - **Restart-safe.** All cursors and per-issue state live in SQLite on a named
   volume, so a restart does not re-trigger Devin on every open issue.
-- **No self-replies.** Comments from the bot identity are filtered out of both
-  discovery and the prompts.
+- **No self-replies.** Comments carrying the automation's marker are filtered
+  out of both discovery and the prompts.
 - **Merges are gated** on the review verdict, `mergeable`, and (by default) a
   green combined check status.
 

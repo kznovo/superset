@@ -31,7 +31,9 @@ JSONDict = dict[str, Any]
 
 
 class GitHubError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int = 0) -> None:
+        super().__init__(message)
+        self.status_code = status_code
 
 
 class GitHubClient:
@@ -60,7 +62,8 @@ class GitHubClient:
         response = await self._client.request(method, path, **kwargs)
         if response.status_code >= 400:
             raise GitHubError(
-                f"{method} {path} failed with {response.status_code}: {response.text}"
+                f"{method} {path} failed with {response.status_code}: {response.text}",
+                response.status_code,
             )
         if response.status_code == 204 or not response.content:
             return None
@@ -80,12 +83,6 @@ class GitHubClient:
                 break
             page += 1
         return results
-
-    # --- identity --------------------------------------------------------
-
-    async def whoami(self) -> str:
-        data = await self._request("GET", "/user")
-        return str(data["login"])
 
     # --- issues ----------------------------------------------------------
 
@@ -135,17 +132,20 @@ class GitHubClient:
 
     async def combined_status(self, sha: str) -> str:
         """Roll check-runs and legacy statuses into one of success/pending/failure."""
-        legacy = await self._request(
-            "GET", f"/repos/{self.repo}/commits/{sha}/status", params={"per_page": 100}
+        legacy = await self._optional_get(f"/repos/{self.repo}/commits/{sha}/status")
+        checks = await self._optional_get(
+            f"/repos/{self.repo}/commits/{sha}/check-runs"
         )
-        checks = await self._request(
-            "GET",
-            f"/repos/{self.repo}/commits/{sha}/check-runs",
-            params={"per_page": 100},
-        )
-        states = {str(legacy.get("state", "pending"))}
-        if states == {"pending"} and not legacy.get("statuses"):
-            states = set()
+        if legacy is None or checks is None:
+            logger.warning(
+                "incomplete CI visibility for %s: grant the token Commit statuses "
+                "and Checks read access, or disable require_green_ci",
+                sha,
+            )
+            return "pending"
+        states: set[str] = set()
+        if legacy.get("statuses"):
+            states.add(str(legacy.get("state", "pending")))
         for run in checks.get("check_runs", []):
             if run.get("status") != "completed":
                 states.add("pending")
@@ -160,6 +160,16 @@ class GitHubClient:
         if "pending" in states:
             return "pending"
         return "success"
+
+    async def _optional_get(self, path: str) -> JSONDict | None:
+        """GET a resource, returning None when the token cannot read it."""
+        try:
+            return dict(await self._request("GET", path, params={"per_page": 100}))
+        except GitHubError as exc:
+            if exc.status_code == 403:
+                logger.warning("no permission for %s: %s", path, exc)
+                return None
+            raise
 
     async def merge_pull(
         self, number: int, merge_method: str = "squash", commit_title: str = ""

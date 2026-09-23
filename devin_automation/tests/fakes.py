@@ -82,9 +82,6 @@ class FakeGitHub:
 
     # --- client surface --------------------------------------------------
 
-    async def whoami(self) -> str:
-        return BOT_LOGIN
-
     async def list_issues_updated_since(
         self, since: str | None, labels: str = ""
     ) -> list[JSONDict]:
@@ -102,7 +99,7 @@ class FakeGitHub:
         self.comments.setdefault(number, []).append(
             {"id": comment_id, "user": {"login": BOT_LOGIN}, "body": body}
         )
-        return {"id": comment_id}
+        return {"id": comment_id, "user": {"login": BOT_LOGIN}}
 
     async def get_pull(self, number: int) -> JSONDict:
         return self.pulls[number]
