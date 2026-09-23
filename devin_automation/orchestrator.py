@@ -339,6 +339,10 @@ class Orchestrator:
             title=f"[auto-review] {self.settings.repo}#{issue.pr_number}"[:120],
             tags=["devin-automation", "review", f"issue-{issue.number}"],
             structured_output_schema=REVIEW_OUTPUT_SCHEMA,
+            # Every round reviews the same pull request URL, so an idempotent
+            # create would hand back the previous round's session — verdict
+            # included — and the loop would spend its rounds re-reading it.
+            idempotent=False,
         )
         assert issue.pr_number is not None
         self.store.set_review_session(issue.pr_number, str(session["session_id"]))

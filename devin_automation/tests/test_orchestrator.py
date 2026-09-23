@@ -212,6 +212,27 @@ async def test_blocked_session_with_output_is_read_as_a_result(setup: Any) -> No
     assert issue.pr_number == 42
 
 
+async def test_each_review_round_gets_its_own_session(setup: Any) -> None:
+    # The review prompt is identical every round, so an idempotent create
+    # would return the previous round's session and its stale verdict.
+    orchestrator, github, devin, store = setup
+    github.add_issue(1, "Bug", "alice")
+    await orchestrator.run_cycle()
+    github.add_pull(42)
+    devin.set_session(
+        devin.created[0]["session_id"],
+        structured_output={
+            "outcome": "pr_opened",
+            "pr_url": "https://github.com/o/r/pull/42",
+        },
+    )
+    await orchestrator.run_cycle()
+    await orchestrator.run_cycle()
+
+    review = devin.created[-1]
+    assert review["idempotent"] is False
+
+
 async def test_stale_output_is_ignored_while_the_session_works(setup: Any) -> None:
     # Structured output survives a follow-up message, so a working session
     # still advertises the previous round's result.
